@@ -1,0 +1,421 @@
+Plano de Implementação — Lambda CPF Validator
+1. Objetivo
+
+Criar uma AWS Lambda responsável exclusivamente pela validação de CPF.
+
+A função deverá ser stateless, independente da aplicação principal e empacotada como uma container image. O código deverá validar não apenas o formato do CPF, mas também seus dois dígitos verificadores.
+
+A infraestrutura necessária para executar a Lambda será posteriormente criada pelo repositório infra. O repositório lambda será responsável pelo código, testes, imagem e pipeline de deploy.
+
+2. Estrutura do repositório
+
+O novo repositório deverá possuir inicialmente a seguinte estrutura:
+
+lambda/
+├── src/
+│   └── handler.py
+├── tests/
+│   └── test_handler.py
+├── Dockerfile
+├── requirements.txt
+├── .dockerignore
+└── .github/
+    └── workflows/
+        └── deploy.yml
+
+Caso a implementação utilize uma arquitetura Python mais estruturada, poderá evoluir posteriormente para:
+
+lambda/
+├── src/
+│   └── cpf_validator/
+│       ├── __init__.py
+│       ├── handler.py
+│       └── validator.py
+├── tests/
+├── Dockerfile
+├── requirements.txt
+├── .dockerignore
+└── .github/
+    └── workflows/
+        └── deploy.yml
+
+Para a primeira versão, deve-se evitar complexidade desnecessária.
+
+3. Implementação da função
+
+A Lambda deverá utilizar o modelo de handler da AWS para container images.
+
+Conceitualmente:
+
+AWS Lambda
+     │
+     ▼
+handler(event, context)
+     │
+     ▼
+CPF Validator
+     │
+     ▼
+resultado da validação
+
+A responsabilidade da função deverá ser limitada à validação do CPF.
+
+O algoritmo deverá verificar:
+
+CPF recebido
+    │
+    ├── possui 11 dígitos?
+    │
+    ├── possui sequência repetida?
+    │
+    ├── primeiro dígito verificador válido?
+    │
+    └── segundo dígito verificador válido?
+             │
+             ▼
+        CPF válido/inválido
+
+A implementação não deverá depender de banco de dados, arquivos locais persistentes, variáveis externas ou serviços AWS.
+
+4. Contrato da função
+
+Mesmo sem API Gateway nesta primeira etapa, é importante estabelecer um contrato estável para o handler.
+
+Uma possibilidade simples:
+
+{
+  "cpf": "12345678909"
+}
+
+Resposta:
+
+{
+  "valid": true
+}
+
+Para CPF inválido:
+
+{
+  "valid": false
+}
+
+Entradas malformadas deverão ser tratadas explicitamente. Por exemplo, ausência do campo cpf não deve resultar em uma exceção não tratada.
+
+O contrato poderá posteriormente ser adaptado para o formato utilizado pelo API Gateway, sem alterar a lógica central de validação.
+
+5. Separação entre handler e regra de negócio
+
+A lógica de validação não deverá ficar acoplada ao handler.
+
+A arquitetura recomendada é:
+
+handler.py
+    │
+    ▼
+validator.py
+    │
+    ▼
+validate_cpf()
+
+Assim, o handler fica responsável por interpretar a entrada e produzir a resposta, enquanto validate_cpf() contém exclusivamente a regra de negócio.
+
+Isso também facilita os testes unitários.
+
+Exemplo conceitual:
+
+def validate_cpf(cpf: str) -> bool:
+    ...
+
+e:
+
+def handler(event, context):
+    cpf = event.get("cpf")
+    return {"valid": validate_cpf(cpf)}
+6. Testes
+
+Os testes deverão cobrir tanto a regra de negócio quanto o comportamento do handler.
+
+Para o validador, deverão existir casos de:
+
+CPF válido
+CPF inválido
+CPF com menos de 11 dígitos
+CPF com mais de 11 dígitos
+CPF contendo caracteres não numéricos
+CPF com todos os dígitos iguais
+CPF com primeiro dígito verificador inválido
+CPF com segundo dígito verificador inválido
+
+Também é importante testar a representação do CPF com máscara:
+
+123.456.789-09
+
+caso a função decida aceitar esse formato.
+
+A decisão recomendada é permitir CPF com ou sem máscara, normalizando a entrada antes da validação.
+
+7. Containerização
+
+A Lambda será empacotada como container image utilizando uma imagem base oficial compatível com AWS Lambda.
+
+Conceitualmente:
+
+Dockerfile
+    │
+    ├── imagem base AWS Lambda Python
+    ├── dependências
+    ├── código
+    └── configuração do handler
+              │
+              ▼
+       Container Image
+              │
+              ▼
+             ECR
+              │
+              ▼
+            Lambda
+
+Como a função inicialmente não possui dependências externas relevantes, a imagem deverá ser mantida pequena.
+
+O Dockerfile deverá utilizar uma imagem base específica e versionada, evitando depender de uma tag genérica como latest.
+
+8. Execução local
+
+Antes de qualquer deploy AWS, o container deverá poder ser executado localmente.
+
+O fluxo esperado será:
+
+docker build
+     │
+     ▼
+Lambda container
+     │
+     ▼
+requisição local
+     │
+     ▼
+handler
+     │
+     ▼
+resposta
+
+Deverá ser possível validar localmente pelo menos:
+
+build da imagem
+startup do container
+execução do handler
+CPF válido
+CPF inválido
+entrada inválida
+
+Isso reduz a dependência da AWS durante o desenvolvimento.
+
+9. ECR
+
+O repository ECR da Lambda será criado pelo Terraform no repositório infra.
+
+O repositório lambda não deverá possuir Terraform para criação do ECR.
+
+O pipeline deverá assumir que o repository já existe:
+
+infra
+ │
+ └── cria ECR cpf-validator
+             │
+             ▼
+lambda pipeline
+ │
+ ├── docker build
+ ├── docker tag
+ └── docker push
+
+A imagem deverá ser publicada utilizando uma tag relacionada ao commit.
+
+Por exemplo:
+
+cpf-validator:abc1234
+
+O ambiente não deverá utilizar latest como referência da versão implantada.
+
+10. Pipeline CI/CD
+
+O pipeline deverá ser independente do pipeline da aplicação.
+
+Fluxo:
+
+Git Push
+   │
+   ▼
+Tests
+   │
+   ├── pytest
+   └── lint
+   │
+   ▼
+Docker Build
+   │
+   ▼
+ECR Push
+   │
+   ▼
+Lambda Update
+
+O pipeline deverá falhar imediatamente caso os testes não passem.
+
+Uma possível divisão futura seria:
+
+Pull Request
+    │
+    └── Testes + lint
+
+Merge/Push
+    │
+    ├── Testes
+    ├── Build
+    ├── Push ECR
+    └── Deploy Lambda
+11. Autenticação do pipeline
+
+O pipeline precisará de permissão para:
+
+autenticar no ECR
+push da imagem
+atualizar a Lambda
+
+A recomendação é utilizar GitHub Actions com OIDC para assumir uma IAM Role na AWS, evitando armazenar permanentemente AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY como secrets.
+
+Conceitualmente:
+
+GitHub Actions
+      │
+      │ OIDC
+      ▼
+AWS IAM Role
+      │
+      ├── ECR Push
+      │
+      └── Lambda Update
+
+As permissões deverão seguir o princípio de menor privilégio.
+
+12. Atualização da Lambda
+
+Depois do push da imagem, o pipeline deverá atualizar a Lambda para utilizar a nova imagem.
+
+O fluxo será:
+
+cpf-validator:abc1234
+          │
+          ▼
+         ECR
+          │
+          ▼
+Lambda recebe nova Image URI
+          │
+          ▼
+Lambda Update
+
+A versão implantada deverá ser determinística e vinculada ao commit.
+
+É importante não simplesmente executar um deploy que aponte para latest, pois isso dificulta identificar exatamente qual código está em produção/sandbox.
+
+13. Infraestrutura fora deste repositório
+
+Embora a Lambda seja o foco deste plano, sua infraestrutura será responsabilidade do infra.
+
+O infra deverá posteriormente criar, no mínimo:
+
+ECR cpf-validator
+Lambda Function
+IAM Role da Lambda
+IAM permissions
+
+Possivelmente também:
+
+CloudWatch Log Group
+API Gateway
+
+mas API Gateway está explicitamente fora do escopo desta primeira implementação.
+
+A relação será:
+
+              infra
+                │
+       ┌────────┴────────┐
+       ▼                 ▼
+     ECR              Lambda
+       ▲                 ▲
+       │                 │
+       └──── lambda ─────┘
+             pipeline
+
+O ponto importante é que o lambda não deverá tentar criar ou destruir sua própria infraestrutura AWS.
+
+14. Observabilidade
+
+Nesta primeira etapa, não será necessário implementar uma solução de observabilidade adicional.
+
+A Lambda deverá utilizar o mecanismo padrão de logs da AWS.
+
+O código deverá evitar logs desnecessários e, principalmente, não deverá registrar informações sensíveis caso futuramente sejam adicionados dados reais de CPF.
+
+Como o CPF é um dado que não deve ser exposto desnecessariamente em logs, a implementação deverá evitar algo como:
+
+INFO CPF recebido: 12345678909
+
+O comportamento de erro deverá ser suficiente para diagnosticar problemas sem registrar o CPF completo.
+
+15. Critérios de conclusão
+
+A implementação da Lambda poderá ser considerada concluída quando:
+
+✓ Repositório lambda criado
+✓ Handler implementado
+✓ Algoritmo de validação de CPF implementado
+✓ Testes unitários implementados
+✓ Testes passando
+✓ Dockerfile funcional
+✓ Container executando localmente
+✓ Imagem publicada no ECR
+✓ Lambda criada no ambiente AWS
+✓ Pipeline realizando build e push
+✓ Pipeline realizando deploy
+✓ Deploy utiliza tag imutável por commit
+✓ Lambda executa corretamente a imagem publicada
+
+O API Gateway não faz parte do critério de conclusão desta etapa.
+
+16. Sequência prática de implementação
+
+A implementação deve seguir esta ordem:
+
+1. Criar repositório lambda
+        ↓
+2. Implementar validate_cpf()
+        ↓
+3. Criar testes unitários
+        ↓
+4. Implementar handler
+        ↓
+5. Validar testes + lint
+        ↓
+6. Criar Dockerfile
+        ↓
+7. Executar Lambda container localmente
+        ↓
+8. Criar pipeline de CI
+        ↓
+9. Criar ECR através do infra
+        ↓
+10. Configurar autenticação GitHub → AWS
+        ↓
+11. Adicionar push para ECR
+        ↓
+12. Criar Lambda através do infra
+        ↓
+13. Adicionar atualização da Lambda ao pipeline
+        ↓
+14. Validar deploy completo
+
+O resultado desta etapa será uma Lambda completamente funcional e independente, capaz de receber um CPF, executar a validação e retornar o resultado, com seu código versionado, testado, containerizado e com CI/CD automatizado. A integração com API Gateway poderá ser adicionada posteriormente sem exigir mudanças estruturais significativas no repositório.

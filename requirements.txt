@@ -1,0 +1,2 @@
+# CPF Validator Lambda - Runtime dependencies
+# This package has no runtime dependencies (stdlib only)

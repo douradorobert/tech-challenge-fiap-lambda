@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "cpf-validator"
+version = "0.1.0"
+description = "AWS Lambda function for CPF validation"
+authors = []
+packages = [{include = "cpf_validator", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-cov = "^6.0.0"
+black = "^25.1.0"
+isort = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+line_length = 88
