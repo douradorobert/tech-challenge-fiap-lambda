@@ -1,3 +1,8 @@
 .venv/
 __pycache__/
 *.zip
+.terraform/
+*.tfstate
+*.tfplan
+terraform/.terraform.lock.hcl
+.vscode/settings.json

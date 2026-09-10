@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "terraform: init",
+      "type": "shell",
+      "command": "terraform init",
+      "options": {
+        "cwd": "${workspaceFolder}/terraform"
+      },
+      "group": "build"
+    },
+    {
+      "label": "terraform: validate",
+      "type": "shell",
+      "command": "terraform validate",
+      "options": {
+        "cwd": "${workspaceFolder}/terraform"
+      },
+      "group": "build"
+    },
+    {
+      "label": "terraform: plan",
+      "type": "shell",
+      "command": "terraform plan",
+      "options": {
+        "cwd": "${workspaceFolder}/terraform"
+      },
+      "group": "build"
+    },
+    {
+      "label": "terraform: apply",
+      "type": "shell",
+      "command": "terraform apply",
+      "options": {
+        "cwd": "${workspaceFolder}/terraform"
+      },
+      "group": "build"
+    },
+    {
+      "label": "terraform: destroy",
+      "type": "shell",
+      "command": "terraform destroy",
+      "options": {
+        "cwd": "${workspaceFolder}/terraform"
+      },
+      "group": "build"
+    }
+  ]
+}
